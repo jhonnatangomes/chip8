@@ -89,8 +89,8 @@ impl Vm {
         let vx = self.registers[vx_register_index as usize];
         let vy = self.registers[vy_register_index as usize];
         let mut bit_erased = false;
-        let mut points_to_draw = vec![];
-        let mut points_to_erase = vec![];
+        // let mut points_to_draw = vec![];
+        // let mut points_to_erase = vec![];
         for i in 0..(sprite_height as u8) {
             for j in 0..8 {
                 let screen_x = (vx + j) as usize;
@@ -103,11 +103,11 @@ impl Vm {
                 }
                 *current_pixel = new_pixel;
                 // println!("({}, {})", screen_x, screen_y);
-                if new_pixel == 1 {
-                    points_to_draw.push((screen_x as i32, screen_y as i32));
-                } else {
-                    points_to_erase.push((screen_x as i32, screen_y as i32));
-                }
+                // if new_pixel == 1 {
+                //     points_to_draw.push((screen_x as i32, screen_y as i32));
+                // } else {
+                //     points_to_erase.push((screen_x as i32, screen_y as i32));
+                // }
             }
         }
         if bit_erased {
@@ -115,16 +115,28 @@ impl Vm {
         } else {
             self.registers[0xF] = 0;
         }
-        self.screen.draw_points(&points_to_draw[..]);
+        self.draw_points();
+        // self.screen.draw_points(&points_to_draw[..]);
         // self.screen.erase_points(&points_to_erase[..]);
     }
-    fn run(&mut self) {
-        println!("Press enter to read an instruction...");
-        let mut buffer = String::new();
-        stdin().read_line(&mut buffer).unwrap();
-        if buffer.trim() == "q" {
-            process::exit(0);
+    fn draw_points(&mut self) {
+        let mut points = vec![];
+        for (i, row) in self.virtual_screen.iter().enumerate() {
+            for (j, pixel) in row.iter().enumerate() {
+                if *pixel == 1 {
+                    points.push((j as i32, i as i32));
+                }
+            }
         }
+        self.screen.draw_points(&points[..]);
+    }
+    fn run(&mut self) {
+        // println!("Press enter to read an instruction...");
+        // let mut buffer = String::new();
+        // stdin().read_line(&mut buffer).unwrap();
+        // if buffer.trim() == "q" {
+        //     process::exit(0);
+        // }
         let instruction = self.next_instruction();
         match instruction {
             0x00E0 => self.screen.clear(),
@@ -149,19 +161,19 @@ impl Vm {
             }
             instruction => panic!("Unknown instruction: {instruction}"),
         }
-        println!(" == Vm State == ");
-        // println!("memory: {:?}", &self.memory[0x200..(0x200 + 132)]);
-        println!(
-            "bytes: {:?}",
-            &self.memory[self.i_reg as usize..(self.i_reg + 16) as usize]
-                .iter()
-                .map(|x| format!("{:08b}", x))
-                .collect::<Vec<_>>()
-        );
-        println!("registers: {:?}", self.registers);
-        println!("I register: {:?}", self.i_reg);
-        println!("pc: {:?}", self.pc);
-        println!("virtual screen: {:?}", self.virtual_screen);
+        // println!(" == Vm State == ");
+        // // println!("memory: {:?}", &self.memory[0x200..(0x200 + 132)]);
+        // println!(
+        //     "bytes: {:?}",
+        //     &self.memory[self.i_reg as usize..(self.i_reg + 16) as usize]
+        //         .iter()
+        //         .map(|x| format!("{:08b}", x))
+        //         .collect::<Vec<_>>()
+        // );
+        // println!("registers: {:?}", self.registers);
+        // println!("I register: {:?}", self.i_reg);
+        // println!("pc: {:?}", self.pc);
+        // println!("virtual screen: {:?}", self.virtual_screen);
     }
     // pub fn run(&mut self) {}
 }
