@@ -3,7 +3,7 @@ use std::process;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::Point;
+use sdl2::rect::{Point, Rect};
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::EventPump;
@@ -46,6 +46,8 @@ impl Screen {
         }
     }
     pub fn draw(&mut self) -> MainLoopAction {
+        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
+        self.canvas.clear();
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -64,8 +66,30 @@ impl Screen {
         self.canvas.present();
     }
     pub fn draw_points(&mut self, points: &[(i32, i32)]) {
-        let sdl_points: Vec<Point> = points.iter().map(|p| Point::from(*p)).collect();
+        let sdl_rects: Vec<Rect> = points
+            .iter()
+            .map(|p| {
+                Rect::from((
+                    p.0 * SCALING_FACTOR as i32,
+                    p.1 * SCALING_FACTOR as i32,
+                    SCALING_FACTOR as u32,
+                    SCALING_FACTOR as u32,
+                ))
+            })
+            .collect();
         self.canvas.set_draw_color(Color::RGB(255, 255, 255));
+        match self.canvas.fill_rects(&sdl_rects[..]) {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Error drawing points: {e}");
+                process::exit(1);
+            }
+        }
+        self.canvas.present();
+    }
+    pub fn erase_points(&mut self, points: &[(i32, i32)]) {
+        let sdl_points: Vec<Point> = points.iter().map(|p| Point::from(*p)).collect();
+        self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         match self.canvas.draw_points(&sdl_points[..]) {
             Ok(_) => {}
             Err(e) => {

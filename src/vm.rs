@@ -1,3 +1,5 @@
+use std::{io::stdin, process};
+
 use crate::screen::{MainLoopAction, Screen, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 pub struct Vm {
@@ -9,7 +11,7 @@ pub struct Vm {
     pc: u16,
     sp: u8,
     stack: [u16; 16],
-    virtual_screen: [[bool; SCREEN_HEIGHT]; SCREEN_WIDTH],
+    virtual_screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
     screen: Screen,
 }
 
@@ -52,40 +54,25 @@ impl Vm {
             pc: 0x200,
             sp: 0,
             stack: [0; 16],
-            virtual_screen: [[false; SCREEN_HEIGHT]; SCREEN_WIDTH],
+            virtual_screen: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
             screen: Screen::new(),
         }
     }
     pub fn start(mut self) {
+        // loop {
+        // match self.screen.draw() {
+        //     // MainLoopAction::Interrupt => break,
+        //     // MainLoopAction::Continue => {}
+        //     _ => (),
+        // }
         loop {
             match self.screen.draw() {
                 MainLoopAction::Interrupt => break,
                 MainLoopAction::Continue => {}
             }
-            match self.next_instruction() {
-                0x00E0 => self.screen.clear(),
-                instruction if instruction >= 0x1000 && instruction <= 0x1FFF => {
-                    self.pc = instruction & 0x0FFF
-                }
-                instruction if instruction >= 0x6000 && instruction <= 0x6FFF => {
-                    let register_index = (instruction >> 8 & 0x000F) as usize;
-                    let value = instruction & 0x00FF;
-                    self.registers[register_index] = value as u8;
-                }
-                instruction if instruction >= 0x7000 && instruction <= 0x7FFF => {
-                    let register_index = instruction >> 8 & 0x000F;
-                    let value = instruction & 0x00FF;
-                    self.registers[register_index as usize] += value as u8;
-                }
-                instruction if instruction >= 0xA000 && instruction <= 0xAFFF => {
-                    self.i_reg = instruction & 0x0FFF
-                }
-                instruction if instruction >= 0xD000 && instruction <= 0xDFFF => {
-                    self.draw_generic_sprite(instruction)
-                }
-                instruction => panic!("Unknown instruction: {instruction}"),
-            }
+            self.run();
         }
+        // }
     }
     fn next_instruction(&mut self) -> u16 {
         let high_byte = self.memory[self.pc as usize];
@@ -102,23 +89,24 @@ impl Vm {
         let vx = self.registers[vx_register_index as usize];
         let vy = self.registers[vy_register_index as usize];
         let mut bit_erased = false;
-        let mut points = vec![];
+        let mut points_to_draw = vec![];
+        let mut points_to_erase = vec![];
         for i in 0..(sprite_height as u8) {
             for j in 0..8 {
-                let screen_x = (vx + i) as usize;
-                let screen_y = (vy + j) as usize;
-                let current_pixel_on = self.virtual_screen[screen_x][screen_y];
-                let new_pixel_on = if j != 8 {
-                    (pixels_to_draw[i as usize] >> (8 - j)) & 0x000F
-                } else {
-                    pixels_to_draw[i as usize] & 0x0F
-                } != 0;
-                if current_pixel_on && !new_pixel_on {
+                let screen_x = (vx + j) as usize;
+                let screen_y = (vy + i) as usize;
+                let current_pixel = &mut self.virtual_screen[screen_y][screen_x];
+                let new_pixel = ((pixels_to_draw[i as usize] >> (7 - j)) & 1) ^ *current_pixel;
+                // println!("{new_pixel}");
+                if *current_pixel == 1 && new_pixel == 0 {
                     bit_erased = true;
                 }
-                self.virtual_screen[screen_x][screen_y] = new_pixel_on;
-                if new_pixel_on {
-                    points.push((screen_x as i32, screen_y as i32));
+                *current_pixel = new_pixel;
+                // println!("({}, {})", screen_x, screen_y);
+                if new_pixel == 1 {
+                    points_to_draw.push((screen_x as i32, screen_y as i32));
+                } else {
+                    points_to_erase.push((screen_x as i32, screen_y as i32));
                 }
             }
         }
@@ -127,7 +115,53 @@ impl Vm {
         } else {
             self.registers[0xF] = 0;
         }
-        self.screen.draw_points(&points[..]);
+        self.screen.draw_points(&points_to_draw[..]);
+        // self.screen.erase_points(&points_to_erase[..]);
+    }
+    fn run(&mut self) {
+        println!("Press enter to read an instruction...");
+        let mut buffer = String::new();
+        stdin().read_line(&mut buffer).unwrap();
+        if buffer.trim() == "q" {
+            process::exit(0);
+        }
+        let instruction = self.next_instruction();
+        match instruction {
+            0x00E0 => self.screen.clear(),
+            instruction if instruction >= 0x1000 && instruction <= 0x1FFF => {
+                self.pc = instruction & 0x0FFF
+            }
+            instruction if instruction >= 0x6000 && instruction <= 0x6FFF => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = instruction & 0x00FF;
+                self.registers[register_index] = value as u8;
+            }
+            instruction if instruction >= 0x7000 && instruction <= 0x7FFF => {
+                let register_index = instruction >> 8 & 0x000F;
+                let value = instruction & 0x00FF;
+                self.registers[register_index as usize] += value as u8;
+            }
+            instruction if instruction >= 0xA000 && instruction <= 0xAFFF => {
+                self.i_reg = instruction & 0x0FFF
+            }
+            instruction if instruction >= 0xD000 && instruction <= 0xDFFF => {
+                self.draw_generic_sprite(instruction)
+            }
+            instruction => panic!("Unknown instruction: {instruction}"),
+        }
+        println!(" == Vm State == ");
+        // println!("memory: {:?}", &self.memory[0x200..(0x200 + 132)]);
+        println!(
+            "bytes: {:?}",
+            &self.memory[self.i_reg as usize..(self.i_reg + 16) as usize]
+                .iter()
+                .map(|x| format!("{:08b}", x))
+                .collect::<Vec<_>>()
+        );
+        println!("registers: {:?}", self.registers);
+        println!("I register: {:?}", self.i_reg);
+        println!("pc: {:?}", self.pc);
+        println!("virtual screen: {:?}", self.virtual_screen);
     }
     // pub fn run(&mut self) {}
 }
