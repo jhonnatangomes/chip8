@@ -89,7 +89,10 @@ impl Vm {
                 MainLoopAction::Interrupt => break,
                 MainLoopAction::Continue => {}
             }
-            self.run();
+            match self.run() {
+                MainLoopAction::Interrupt => break,
+                MainLoopAction::Continue => {}
+            }
         }
     }
     fn next_instruction(&mut self) -> u16 {
@@ -137,7 +140,7 @@ impl Vm {
         }
         self.screen.draw_points(&points[..]);
     }
-    fn run(&mut self) {
+    fn run(&mut self) -> MainLoopAction {
         // println!("Press enter to read an instruction...");
         // let mut buffer = String::new();
         // stdin().read_line(&mut buffer).unwrap();
@@ -147,6 +150,10 @@ impl Vm {
         let instruction = self.next_instruction();
         match instruction {
             0x00E0 => self.screen.clear(),
+            0x00EE => {
+                self.sp -= 1;
+                self.pc = self.stack[self.sp as usize];
+            }
             instruction if instruction >= 0x1000 && instruction <= 0x1FFF => {
                 self.pc = instruction & 0x0FFF;
             }
@@ -160,6 +167,20 @@ impl Vm {
                 let register_index = (instruction >> 8 & 0x000F) as usize;
                 let value = (instruction & 0x00FF) as u8;
                 if self.registers[register_index] == value {
+                    self.pc += 2;
+                }
+            }
+            instruction if instruction >= 0x4000 && instruction <= 0x4FFF => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = (instruction & 0x00FF) as u8;
+                if self.registers[register_index] != value {
+                    self.pc += 2;
+                }
+            }
+            instruction if instruction >= 0x5000 && instruction <= 0x5FF0 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                if self.registers[register_index_x] == self.registers[register_index_y] {
                     self.pc += 2;
                 }
             }
@@ -178,8 +199,77 @@ impl Vm {
                 let register_index_y = (instruction >> 4 & 0x000F) as usize;
                 self.registers[register_index_x] = self.registers[register_index_y];
             }
+            instruction if instruction >= 0x8001 && instruction <= 0x8FF1 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                self.registers[register_index_x] |= self.registers[register_index_y];
+            }
+            instruction if instruction >= 0x8002 && instruction <= 0x8FF2 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                self.registers[register_index_x] &= self.registers[register_index_y];
+            }
+            instruction if instruction >= 0x8003 && instruction <= 0x8FF3 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                self.registers[register_index_x] ^= self.registers[register_index_y];
+            }
+            instruction if instruction >= 0x8004 && instruction <= 0x8FF4 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                let sum = self.registers[register_index_x] as u16
+                    + self.registers[register_index_y] as u16;
+                if sum > 255 {
+                    self.registers[0xF] = 1;
+                } else {
+                    self.registers[0xF] = 0;
+                }
+                self.registers[register_index_x] += self.registers[register_index_y];
+            }
+            instruction if instruction >= 0x8005 && instruction <= 0x8FF5 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                if self.registers[register_index_x] > self.registers[register_index_y] {
+                    self.registers[0xF] = 1;
+                } else {
+                    self.registers[0xF] = 0;
+                }
+                self.registers[register_index_x] -= self.registers[register_index_y];
+            }
+            instruction if instruction >= 0x8006 && instruction <= 0x8FF6 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                self.registers[0xF] = self.registers[register_index_x] & 1;
+                self.registers[register_index_x] >>= 1;
+            }
+            instruction if instruction >= 0x8007 && instruction <= 0x8FF7 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                if self.registers[register_index_y] > self.registers[register_index_x] {
+                    self.registers[0xF] = 1;
+                } else {
+                    self.registers[0xF] = 0;
+                }
+                self.registers[register_index_x] =
+                    self.registers[register_index_y] - self.registers[register_index_x];
+            }
+            instruction if instruction >= 0x800E && instruction <= 0x8FFE => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                self.registers[0xF] = self.registers[register_index_x] >> 7 & 1;
+                self.registers[register_index_x] <<= 1;
+            }
+            instruction if instruction >= 0x9000 && instruction <= 0x9FF0 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                if self.registers[register_index_x] != self.registers[register_index_y] {
+                    self.pc += 2;
+                }
+            }
             instruction if instruction >= 0xA000 && instruction <= 0xAFFF => {
                 self.i_reg = instruction & 0x0FFF
+            }
+            instruction if instruction >= 0xB000 && instruction <= 0xBFFF => {
+                let address = instruction & 0x0FFF;
+                self.pc = self.registers[0] as u16 + address;
             }
             instruction if instruction >= 0xC000 && instruction <= 0xCFFF => {
                 let register_index = (instruction >> 8 & 0x000F) as usize;
@@ -189,8 +279,76 @@ impl Vm {
             instruction if instruction >= 0xD000 && instruction <= 0xDFFF => {
                 self.draw_generic_sprite(instruction)
             }
+            instruction if instruction >= 0xE09E && instruction <= 0xEF9E => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let register_value = self.registers[register_index];
+                if self.screen.is_key_pressed(register_value) {
+                    self.pc += 2;
+                }
+            }
+            instruction if instruction >= 0xE0A1 && instruction <= 0xEFA1 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let register_value = self.registers[register_index];
+                if !self.screen.is_key_pressed(register_value) {
+                    self.pc += 2;
+                }
+            }
+            instruction if instruction >= 0xF007 && instruction <= 0xFF07 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                self.registers[register_index] = *self.delay_reg.lock().unwrap();
+            }
+            instruction if instruction >= 0xF00A && instruction <= 0xFF0A => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                match self.screen.wait_for_keypress() {
+                    Some(key) => {
+                        self.registers[register_index] = key;
+                    }
+                    None => return MainLoopAction::Interrupt,
+                }
+            }
+            instruction if instruction >= 0xF015 && instruction <= 0xFF15 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                self.delay_reg = Arc::new(Mutex::new(self.registers[register_index]));
+            }
+            instruction if instruction >= 0xF018 && instruction <= 0xFF18 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                self.sound_reg = Arc::new(Mutex::new(self.registers[register_index]));
+            }
+            instruction if instruction >= 0xF01E && instruction <= 0xFF1E => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                self.i_reg += self.registers[register_index] as u16;
+            }
+            instruction if instruction >= 0xF029 && instruction <= 0xFF29 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = self.registers[register_index];
+                self.i_reg = value as u16 * 5;
+            }
+            instruction if instruction >= 0xF033 && instruction <= 0xFF33 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = self.registers[register_index];
+                let hundreds = (value / 100) * 100;
+                let tens = ((value - hundreds) / 10) * 10;
+                let ones = value - hundreds - tens;
+                let i_reg = self.i_reg as usize;
+                self.memory[i_reg] = hundreds;
+                self.memory[i_reg + 1] = tens;
+                self.memory[i_reg + 2] = ones;
+            }
+            instruction if instruction >= 0xF055 && instruction <= 0xFF55 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                for reg in 0..=register_index {
+                    self.memory[self.i_reg as usize + reg] = self.registers[reg];
+                }
+            }
+            instruction if instruction >= 0xF065 && instruction <= 0xFF65 => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                for reg in 0..=register_index {
+                    self.registers[reg] = self.memory[self.i_reg as usize + reg];
+                }
+            }
             instruction => panic!("Unknown instruction: {instruction}"),
         }
+        MainLoopAction::Continue
         // println!(" == Vm State == ");
         // // println!("memory: {:?}", &self.memory[0x200..(0x200 + 132)]);
         // println!(

@@ -1,7 +1,7 @@
 use std::process;
 
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::{Keycode, Scancode};
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
@@ -86,5 +86,73 @@ impl Screen {
             }
         }
         self.canvas.present();
+    }
+    pub fn is_key_pressed(&mut self, key: u8) -> bool {
+        let scancode = match key {
+            1 => Scancode::Num1,
+            2 => Scancode::Num2,
+            3 => Scancode::Num3,
+            0xC => Scancode::Num4,
+            4 => Scancode::Q,
+            5 => Scancode::W,
+            6 => Scancode::E,
+            0xD => Scancode::R,
+            7 => Scancode::A,
+            8 => Scancode::S,
+            9 => Scancode::D,
+            0xE => Scancode::F,
+            0xA => Scancode::Z,
+            0 => Scancode::X,
+            0xB => Scancode::C,
+            0xF => Scancode::V,
+            _ => unreachable!(),
+        };
+        self.event_pump
+            .keyboard_state()
+            .is_scancode_pressed(scancode)
+    }
+    pub fn wait_for_keypress(&mut self) -> Option<u8> {
+        loop {
+            match self.event_pump.wait_event() {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => {
+                    return None;
+                }
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    if let Some(key) = keycode_to_u8(keycode) {
+                        return Some(key);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn keycode_to_u8(keycode: Keycode) -> Option<u8> {
+    match keycode {
+        Keycode::Num1 => Some(1),
+        Keycode::Num2 => Some(2),
+        Keycode::Num3 => Some(3),
+        Keycode::Num4 => Some(0xC),
+        Keycode::Q => Some(4),
+        Keycode::W => Some(5),
+        Keycode::E => Some(6),
+        Keycode::R => Some(0xD),
+        Keycode::A => Some(7),
+        Keycode::S => Some(8),
+        Keycode::D => Some(9),
+        Keycode::F => Some(0xE),
+        Keycode::Z => Some(0xA),
+        Keycode::X => Some(0),
+        Keycode::C => Some(0xB),
+        Keycode::V => Some(0xF),
+        _ => None,
     }
 }
