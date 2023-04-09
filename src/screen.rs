@@ -1,4 +1,5 @@
-use std::process;
+use std::sync::mpsc;
+use std::{process, thread};
 
 use sdl2::event::Event;
 use sdl2::keyboard::{Keycode, Scancode};
@@ -118,9 +119,7 @@ impl Screen {
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
-                } => {
-                    return None;
-                }
+                } => return None,
                 Event::KeyDown {
                     keycode: Some(keycode),
                     ..
