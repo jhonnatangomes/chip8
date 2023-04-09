@@ -2,6 +2,7 @@ use std::{env, fs, process};
 
 use vm::Vm;
 
+mod audio;
 mod screen;
 mod vm;
 
@@ -12,7 +13,7 @@ fn main() {
         eprintln!("Rom is too large");
         process::exit(1);
     }
-    println!("{}", rom.len());
+    // println!("{}", rom.len());
     let vm = Vm::new(rom);
     vm.start();
 }

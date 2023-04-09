@@ -1,18 +1,28 @@
-use std::{io::stdin, process};
+use std::{
+    io::stdin,
+    process,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
-use crate::screen::{MainLoopAction, Screen, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::{
+    audio::Audio,
+    screen::{MainLoopAction, Screen, SCREEN_HEIGHT, SCREEN_WIDTH},
+};
 
 pub struct Vm {
     memory: [u8; 4096],
     registers: [u8; 16],
     i_reg: u16,
-    delay_reg: u8,
-    timer_reg: u8,
+    delay_reg: Arc<Mutex<u8>>,
+    sound_reg: Arc<Mutex<u8>>,
     pc: u16,
     sp: u8,
     stack: [u16; 16],
     virtual_screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
     screen: Screen,
+    audio: Arc<Audio>,
 }
 
 impl Vm {
@@ -44,27 +54,36 @@ impl Vm {
             .collect::<Vec<u8>>()
             .try_into()
             .unwrap();
-        // println!("code_start: {}", &memory[0x200]);
         Vm {
             memory,
             registers: [0; 16],
             i_reg: 0,
-            delay_reg: 0,
-            timer_reg: 0,
+            delay_reg: Arc::new(Mutex::new(0)),
+            sound_reg: Arc::new(Mutex::new(0)),
             pc: 0x200,
             sp: 0,
             stack: [0; 16],
             virtual_screen: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
             screen: Screen::new(),
+            audio: Arc::new(Audio::new()),
         }
     }
     pub fn start(mut self) {
-        // loop {
-        // match self.screen.draw() {
-        //     // MainLoopAction::Interrupt => break,
-        //     // MainLoopAction::Continue => {}
-        //     _ => (),
-        // }
+        let sound_reg = Arc::clone(&self.sound_reg);
+        let delay_reg = Arc::clone(&self.delay_reg);
+        let audio = Arc::clone(&self.audio);
+        thread::spawn(move || loop {
+            let mut sound_reg = sound_reg.lock().unwrap();
+            let mut delay_reg = delay_reg.lock().unwrap();
+            if *sound_reg > 0 {
+                audio.play();
+                *sound_reg -= 1;
+            }
+            if *delay_reg > 0 {
+                *delay_reg -= 1;
+            }
+            thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        });
         loop {
             match self.screen.draw() {
                 MainLoopAction::Interrupt => break,
@@ -72,7 +91,6 @@ impl Vm {
             }
             self.run();
         }
-        // }
     }
     fn next_instruction(&mut self) -> u16 {
         let high_byte = self.memory[self.pc as usize];
