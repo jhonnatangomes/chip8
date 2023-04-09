@@ -1,10 +1,10 @@
 use std::{
-    io::stdin,
-    process,
     sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
+
+use rand::random;
 
 use crate::{
     audio::Audio,
@@ -107,25 +107,16 @@ impl Vm {
         let vx = self.registers[vx_register_index as usize];
         let vy = self.registers[vy_register_index as usize];
         let mut bit_erased = false;
-        // let mut points_to_draw = vec![];
-        // let mut points_to_erase = vec![];
         for i in 0..(sprite_height as u8) {
             for j in 0..8 {
-                let screen_x = (vx + j) as usize;
-                let screen_y = (vy + i) as usize;
+                let screen_x = ((vx + j) % SCREEN_WIDTH as u8) as usize;
+                let screen_y = ((vy + i) % SCREEN_HEIGHT as u8) as usize;
                 let current_pixel = &mut self.virtual_screen[screen_y][screen_x];
                 let new_pixel = ((pixels_to_draw[i as usize] >> (7 - j)) & 1) ^ *current_pixel;
-                // println!("{new_pixel}");
                 if *current_pixel == 1 && new_pixel == 0 {
                     bit_erased = true;
                 }
                 *current_pixel = new_pixel;
-                // println!("({}, {})", screen_x, screen_y);
-                // if new_pixel == 1 {
-                //     points_to_draw.push((screen_x as i32, screen_y as i32));
-                // } else {
-                //     points_to_erase.push((screen_x as i32, screen_y as i32));
-                // }
             }
         }
         if bit_erased {
@@ -134,8 +125,6 @@ impl Vm {
             self.registers[0xF] = 0;
         }
         self.draw_points();
-        // self.screen.draw_points(&points_to_draw[..]);
-        // self.screen.erase_points(&points_to_erase[..]);
     }
     fn draw_points(&mut self) {
         let mut points = vec![];
@@ -159,7 +148,20 @@ impl Vm {
         match instruction {
             0x00E0 => self.screen.clear(),
             instruction if instruction >= 0x1000 && instruction <= 0x1FFF => {
-                self.pc = instruction & 0x0FFF
+                self.pc = instruction & 0x0FFF;
+            }
+            instruction if instruction >= 0x2000 && instruction <= 0x2FFF => {
+                let address = instruction & 0x0FFF;
+                self.stack[self.sp as usize] = self.pc;
+                self.sp += 1;
+                self.pc = address;
+            }
+            instruction if instruction >= 0x3000 && instruction <= 0x3FFF => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = (instruction & 0x00FF) as u8;
+                if self.registers[register_index] == value {
+                    self.pc += 2;
+                }
             }
             instruction if instruction >= 0x6000 && instruction <= 0x6FFF => {
                 let register_index = (instruction >> 8 & 0x000F) as usize;
@@ -171,8 +173,18 @@ impl Vm {
                 let value = instruction & 0x00FF;
                 self.registers[register_index as usize] += value as u8;
             }
+            instruction if instruction >= 0x8000 && instruction <= 0x8FF0 => {
+                let register_index_x = (instruction >> 8 & 0x000F) as usize;
+                let register_index_y = (instruction >> 4 & 0x000F) as usize;
+                self.registers[register_index_x] = self.registers[register_index_y];
+            }
             instruction if instruction >= 0xA000 && instruction <= 0xAFFF => {
                 self.i_reg = instruction & 0x0FFF
+            }
+            instruction if instruction >= 0xC000 && instruction <= 0xCFFF => {
+                let register_index = (instruction >> 8 & 0x000F) as usize;
+                let value = instruction & 0x00FF;
+                self.registers[register_index] = random::<u8>() & value as u8;
             }
             instruction if instruction >= 0xD000 && instruction <= 0xDFFF => {
                 self.draw_generic_sprite(instruction)
@@ -193,5 +205,4 @@ impl Vm {
         // println!("pc: {:?}", self.pc);
         // println!("virtual screen: {:?}", self.virtual_screen);
     }
-    // pub fn run(&mut self) {}
 }
